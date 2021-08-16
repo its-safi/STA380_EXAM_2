@@ -1,5 +1,13 @@
 Link to RMD file: <https://github.com/its-safi/STA380_EXAM_2>
 
+-   ***Group Members***
+
+    -   Bhavana Reddy 
+    -   Palak Agarwal
+    -   Safiuddin Mohammed
+
+
+
 # Problem 1: Visual story telling part 1: green buildings
 
 The real estate developer essentially wants to know if investing in a

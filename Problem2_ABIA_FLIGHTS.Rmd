@@ -1,0 +1,417 @@
+---
+title: 'ABIA Flights'
+author: "Bhavana Reddy, Palak Agarwal, Safiuddin Mohammed"
+date: "8/16/2021"
+output : md_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## **Visual story telling: flights at ABIA**
+
+### **Problem**
+Consider the data in ABIA.csv, which contains information on every commercial flight in 2008 that either departed from or landed at Austin-Bergstrom Interational Airport. 
+
+Your task is to create a figure, or set of related figures, that tell an interesting story about flights into and out of Austin. You can annotate the figure and briefly describe it, but strive to make it as stand-alone as possible. It shouldn't need many, many paragraphs to convey its meaning. Rather, the figure should speak for itself as far as possible.
+
+
+### **Objectives**
+* ***Data Introduction and Volumes***
+
+    * Volume of Delayed, Cancelled, Ontime Flights
+    * Volume of Flights by Carrier Operation
+    * Volume of Flights by Destination
+    
+    
+* ***Analysis of Delays and Cancellations***
+    * Distribution of Delay time by Arrivals and Departures. 
+    * Correlation between Arrival Delay and Departure Delay
+    * Reasons for Delay
+    * Delays impact by Destination
+    
+* ***Carrier Analysis***
+    * Volume of Flights Delayed / Cancelled by Carrier Operation
+    * Percentage Delay by substantial Carriers.
+    
+
+
+### **Data Introduction and Volumes**
+
+
+```{r, echo=FALSE, include=FALSE}
+library(ggplot2)
+library(ggpubr)
+library(tidyverse)
+library(hrbrthemes)
+library(viridis)
+library(ggridges)
+airport.data <- read.csv("ABIA.csv", header = TRUE) 
+head(airport.data)
+attach(airport.data)
+colSums(is.na(airport.data))
+```
+
+```{r, echo=FALSE, include=FALSE}
+
+colnames(airport.data)
+dim(airport.data)
+
+```
+
+```{r, echo=FALSE, include=FALSE}
+
+airport.data[is.na(airport.data)] <- 0
+colSums(is.na(airport.data))
+
+airport.data$Delayed <- ifelse(airport.data$DepDelay+airport.data$ArrDelay  > 0 , TRUE , FALSE)
+
+#Declare as Factors
+col_factors <- c('Month', 'DayofMonth', 'DayOfWeek', 'Cancelled', 'Diverted')
+airport.data[,col_factors] <- lapply(airport.data[,col_factors], as.factor)
+
+#Get hour from hhmm format.
+airport.data$Dep_Hr <- sapply(DepTime, function(x) x%/%100)
+airport.data$CRSDep_Hr <- sapply(CRSDepTime, function(x) x%/%100)
+airport.data$Arr_Hr <- sapply(ArrTime, function(x) x%/%100)
+airport.data$CRSArr_Hr <- sapply(CRSArrTime, function(x) x%/%100)
+
+aus.dep <- subset(airport.data, Origin == 'AUS') #Divide data into arrival and Departure subsets
+aus.arr <- subset(airport.data, Dest == 'AUS')
+
+```
+
+
+
+<h4> Volume of Flights by Delayed, Ontime, Cancelled </h4>
+
+```{r, echo=FALSE}
+cancelled_flights=nrow(airport.data[airport.data$Cancelled == 1,])
+delayed_flights=nrow(airport.data[airport.data$Delayed == TRUE & airport.data$Cancelled == 0,])
+ontime_flights=nrow(airport.data[airport.data$Delayed == FALSE & airport.data$Cancelled == 0,])
+
+
+flight_categories <- c('Cancelled Flights','Delayed Flights','Ontime Flights')
+flight_counts_categories <- c(cancelled_flights, delayed_flights, ontime_flights)
+
+flight_stat_data <- data.frame(flight_categories, flight_counts_categories)
+
+df <- data.frame(flight_categories=c('Cancelled Flights','Delayed Flights','Ontime Flights'),
+                flight_counts_categories=c(cancelled_flights, delayed_flights, ontime_flights))
+p<-ggplot(data=df, aes(x=flight_categories, y=flight_counts_categories)) +
+  geom_bar(stat="identity", fill="steelblue")+
+   theme_light()  +
+  xlab('Flight Status') +
+  ylab('Number of Flights')
+p
+
+
+```
+
+<b> Observations : </b> Surprisingly, nearly 50% of flights seem to be delayed (Either Arrival or Departure). This however does not tell the full story as we include flights that are delayed by even 1 minute. As we analyse delay further later, the information becomes more valid. 
+
+
+<h4> Volume of Flights by Carrier </h4>
+
+```{r, echo=FALSE, include=TRUE}
+pl <- ggplot(aes(x=UniqueCarrier), data=airport.data) +
+  geom_bar(fill='deepskyblue4', position='dodge') +
+  ggtitle('Number of operations by Carrier') +
+  xlab('Carrier Name') +
+  ylab('Number of operations')+ theme_light() 
+  
+
+pl
+
+```
+
+<b> Observations : </b> Southwest(WN) tops the list with almost 40k operations, followed by Alaskan Airlines(AA). Northwest Airlines(NW) has the fewest operations with just 121. 
+
+```{r, echo=FALSE, include=TRUE, message=FALSE}
+packages = c("gtrendsR","tidyverse","usmap")
+
+#use this function to check if each package is on the local machine
+#if a package is installed, it will be loaded
+#if any are not, the missing package(s) will be installed and loaded
+package.check <- lapply(packages, FUN = function(x) {
+    if (!require(x, character.only = TRUE)) {
+        install.packages(x, dependencies = TRUE)
+        library(x, character.only = TRUE)
+    }
+})
+
+
+orange <- "#F88379"
+
+aus_lat_long <- aus.dep[ , c("Dest", "DepDelay")] 
+airport_codes = read.csv("AIRPORTCODES_FILLED.csv")
+
+aus_dep_lat_long <- merge(x = aus_lat_long, y = airport_codes, by.x="Dest", by.y="ï..CODE", all.x = TRUE)
+
+
+require(dplyr)
+ch_dep <- aus_dep_lat_long %>% count(FIPS.code)
+
+colnames(ch_dep)[1]='fips'
+colnames(ch_dep)[2]='hits'
+
+plot_usmap(data = ch_dep, values = "hits",  color = orange, labels=FALSE) + 
+  scale_fill_continuous( low = "white", high = orange, 
+                         name = "Volume of Flights - Outgoing from ABIA", label = scales::comma
+  ) + 
+  theme(legend.position = "right") + 
+  theme(panel.background = element_rect(colour = "black"))+labs(title = "Volume of Flights - Outgoing from ABIA", caption = "Total Delay in minutes/Number of journeys") 
+
+
+
+
+#Arrival delay 
+orange <- "#4682B4"
+
+aus_lat_long <- aus.arr[ , c("Origin", "DepDelay")] 
+airport_codes = read.csv("AIRPORTCODES_FILLED.csv")
+
+aus_dep_lat_long <- merge(x = aus_lat_long, y = airport_codes, by.x="Origin", by.y="ï..CODE", all.x = TRUE)
+
+
+require(dplyr)
+ch <- aus_dep_lat_long %>% count(FIPS.code)
+
+colnames(ch)[1]='fips'
+colnames(ch)[2]='hits'
+
+plot_usmap(data = ch, values = "hits",  color = orange, labels=FALSE) + 
+  scale_fill_continuous( low = "white", high = orange, 
+                         name = "Volume of Departure", label = scales::comma
+  ) + 
+  theme(legend.position = "right") + 
+  theme(panel.background = element_rect(colour = "black"))+labs(title = "Volume of Flights - Outgoing from ABIA", caption = "Total Delay in minutes/Number of journeys") 
+
+
+
+```
+
+<b> Observations : </b> We see that most flights are within state incase of both Outbound and Inboud from ABIA. Interms of Out-Of-State flights, we see maximam flights with California.  
+
+
+
+### ***Analysis of Delays and Cancellations***
+Now that we have an overview of the data, we focus on delays. 
+
+<h4> Distribution of Delay time by Arrivals and Departures</h4>
+
+
+
+```{r, echo=FALSE ,  message=FALSE }
+library(cowplot)
+
+data2 <- data.frame(
+  delaymins =c( aus.arr$ArrDelay, aus.dep$DepDelay),
+  delaytype =c( rep("Arrival Delay",length(aus.arr$ArrDelay)), rep("Departure Delay",length(aus.dep$DepDelay)) )
+)
+
+ridges <- ggplot(data2, aes(x = delaymins, y = delaytype, fill = delaytype)) +
+  geom_density_ridges() +
+  theme_ridges() + 
+  xlab('Delay Type') +
+  ylab('Delay Duration in Minutes') +
+  theme(legend.position = "none")
+
+hist_arr_delay <- ggplot(data = airport.data, aes(x=ArrDelay)) + theme_light() +
+  geom_histogram(bins = 100, binwidth = 10, fill = "turquoise4") + 
+  xlab('Arrival Delay') +
+  ylab('Number of Flights') +
+  ggtitle('Distribution of Arrival Delays')
+  
+
+hist_dep_delay <- ggplot(data = airport.data, aes(x=DepDelay)) + theme_light() +
+  geom_histogram(bins = 100, binwidth = 10, fill='indianred2') +
+  xlab('Departure Delay') +
+  ylab('') +
+  ggtitle('Distribution of Departure Delays') 
+
+bottomrow <- plot_grid(hist_arr_delay, hist_dep_delay)
+
+plot_grid(
+  ridges, bottomrow,
+   ncol = 1, rel_heights=c(2,1)
+)
+```
+
+<b> Observations : </b> Both Delay at departure and delat at arrival are centered at 0. As expected most flight take off and arrive on time.  There are some major outliers.
+
+
+<h4> Correlation between Arrival Delay and Departure Delay </h4>
+
+
+```{r, echo=FALSE}
+
+pl <- ggplot(aes(x=DepDelay, y=ArrDelay), data=airport.data) +
+  geom_point(aes(color=UniqueCarrier)) + theme_light() +
+        ggtitle('Scatter Plot between Departure Delays and Arrival Delays') +
+        xlab('Departure Delay') +
+        ylab('Arrival Delay')
+
+plot_grid(
+  pl, ncol = 1
+)
+
+```
+
+<b> Observations : </b> As expected, most flights that depart late, arrive late. However, there are several flights, that although Depart late are able to Arrive on time.
+
+
+<h4> Reasons for Delay </h4>
+
+
+```{r, echo=FALSE , message=FALSE}
+
+require(scales)
+
+CarrierDelay[is.na(CarrierDelay)] <- 0
+WeatherDelay[is.na(WeatherDelay)] <- 0
+NASDelay[is.na(NASDelay)] <- 0
+SecurityDelay[is.na(SecurityDelay)] <- 0
+LateAircraftDelay[is.na(LateAircraftDelay)] <- 0
+
+delays = data.frame(row.names = c('CarrierDelay', 'WeatherDelay', 'NASDelay', 'SecurityDelay', 'LateAircraftDelay'),  
+'Total'=c(sum(CarrierDelay), sum(WeatherDelay), sum(NASDelay), sum(SecurityDelay), sum(LateAircraftDelay)))
+
+delay_count = c(sum(CarrierDelay>0), sum(WeatherDelay>0), sum(NASDelay>0), sum(SecurityDelay>0), sum(LateAircraftDelay>0))
+delays$delay_count <- delay_count
+
+total_number_minutes <- ggplot(delays, aes(x=rownames(delays), y=Total)) +
+  geom_bar(stat = 'identity', fill = 'indianred2') +
+  ggtitle('Total delay time in Minutes') + xlab('')+ theme_light() +
+  ylab('Cumulative Delay in Minutes')+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ scale_y_continuous(labels = scales::comma)
+
+total_number_flights <- ggplot(delays, aes(x=rownames(delays), y=delay_count)) +
+  geom_bar(stat = 'identity', fill = 'turquoise4') +
+  ggtitle('Number of Flights Delayed') + xlab('')+  theme_light() +
+  ylab('Number of Flights delayed')+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+plot_grid(
+  total_number_minutes,total_number_flights , ncol = 2
+)
+
+```
+
+<b> Observations </b>  : Maximum number of flighs are delayed due to NASDelay, however, they do not result in maximum amount of delay. Carrier delay seems to be most time expensive although slightly less frequent. 
+
+
+<h4> Delay by Destination </h4>
+```{r, echo=FALSE, include=TRUE}
+packages = c("gtrendsR","tidyverse","usmap")
+
+#use this function to check if each package is on the local machine
+#if a package is installed, it will be loaded
+#if any are not, the missing package(s) will be installed and loaded
+package.check <- lapply(packages, FUN = function(x) {
+    if (!require(x, character.only = TRUE)) {
+        install.packages(x, dependencies = TRUE)
+        library(x, character.only = TRUE)
+    }
+})
+
+
+orange <- "#F88379"
+aus_lat_long <- aus.dep[ , c("Dest", "DepDelay")] 
+airport_codes = read.csv("AIRPORTCODES_FILLED.csv")
+aus_dep_lat_long <- merge(x = aus_lat_long, y = airport_codes, by.x="Dest", by.y="ï..CODE", all.x = TRUE)
+aggregate_delays_across_states<-aggregate(aus_dep_lat_long$DepDelay , by=list(fips=aus_dep_lat_long$FIPS.code), FUN=sum)
+
+require(dplyr)
+ch <- aus_dep_lat_long %>% count(FIPS.code)
+aggregate_delays_across_states_normalized <- merge(x = aggregate_delays_across_states, y = ch, by.x='fips', by.y="FIPS.code", all.x = TRUE)
+agg_del <- transform(aggregate_delays_across_states_normalized, hits = x / n)
+agg_del <- agg_del[ , c("fips", "hits")] 
+agg_del$hits=log(abs(agg_del$hits))
+plot_usmap(data = agg_del, values = "hits",  color = orange, labels=FALSE) + 
+  scale_fill_continuous( low = "white", high = orange, 
+                         name = "Log(Total Delay(State)/Total flights(State)", label = scales::comma
+  ) + 
+  theme(legend.position = "right") + 
+  theme(panel.background = element_rect(colour = "black"))+labs(title = "Normalized Departure Delay by State", caption = "Total Delay in minutes/Number of journeys") 
+#Arrival delay 
+orange <- "#4682B4"
+aus_lat_long <- aus.arr[ , c("Origin", "ArrDelay")] 
+airport_codes = read.csv("AIRPORTCODES_FILLED.csv")
+aus_dep_lat_long <- merge(x = aus_lat_long, y = airport_codes, by.x="Origin", by.y="ï..CODE", all.x = TRUE)
+aggregate_delays_across_states<-aggregate(aus_dep_lat_long$ArrDelay , by=list(fips=aus_dep_lat_long$FIPS.code), FUN=sum)
+
+require(dplyr)
+ch_arr <- aus_dep_lat_long %>% count(FIPS.code)
+aggregate_delays_across_states_normalized <- merge(x = aggregate_delays_across_states, y = ch_arr, by.x='fips', by.y="FIPS.code", all.x = TRUE)
+agg_del_arr <- transform(aggregate_delays_across_states_normalized, hits = x / n)
+agg_del_arr <- agg_del_arr[ , c("fips", "hits")] 
+agg_del_arr$hits=log(abs(agg_del_arr$hits))
+plot_usmap(data = agg_del_arr, values = "hits",  color = orange, labels=FALSE) + 
+  scale_fill_continuous( low = "white", high = orange, 
+                         name = "Log(Total Delay(State)/Total flights(State)", label = scales::comma
+  ) + 
+  theme(legend.position = "right") + 
+  theme(panel.background = element_rect(colour = "black"))+labs(title = "Normalized Departure Delay by State", caption = "Total Delay in minutes/Number of journeys") 
+
+```
+
+
+<b> Note : </b> All delays are aggregated then normalized by number of flights. To maintain scale we have log transformed the delays, to habdle states that had just one flight. 
+
+<b> Observation : </b> 
+
+* Maximum departure delay is seen at ABIA airport when flights are departing for the Des Moines Internainal Airport, Iowa. 
+* Maximum Arrival delay is seen for Inbound flights to ABIA airport when arriving from Dulles International Airport, Virginia
+
+
+### ***Analysis of Carriers and How they perform in terms of Delay***
+
+<h4> Delay by Carriers </h4>
+
+```{r, echo=FALSE}
+# DABIA = subset(ABIA, ABIA$delay_bin!=is.null)
+ggplot(data=na.omit(airport.data), mapping=aes(x=UniqueCarrier, y=..count.., fill=Delayed, group=Delayed)) +
+  geom_bar(position = position_dodge(), color='black') +
+  ggtitle("Volume of Flights Delayed/Ontime ")+ theme_light() 
+
+
+```
+
+<b> Observations : </b> We see that most flights carriers maintain a  ontime/delayed >1  ratio. This is indicative of volume proportion. In the below graph we see the percentage of flights that are delayed by each carrier. 
+
+<h4> Percentage delay by Carriers </h4>
+```{r, echo=FALSE, include=TRUE}
+
+airport.data$dummy <- 1
+
+#Subsetting all flights flying out of Austin
+outbound_Aus <- subset(airport.data, airport.data$Origin == "AUS")
+
+#Subsetting all flights flying out of Austin and have experienced delays
+outbound_Aus_delay <- subset(airport.data, airport.data$Origin == "AUS" & airport.data$DepDelay > 0)
+
+
+carrier.delay <- aggregate(outbound_Aus_delay$dummy,by=list(outbound_Aus_delay$UniqueCarrier),FUN = sum, na.rm=TRUE)
+names(carrier.delay)[1] <- "UniqueCarrier"
+names(carrier.delay)[2] <- "AnnualDelays"
+
+#Airlines total outbound count
+carrier.total <- aggregate(outbound_Aus$dummy,by=list(outbound_Aus$UniqueCarrier),FUN = sum, na.rm=TRUE)
+names(carrier.total)[1] <- "UniqueCarrier"
+names(carrier.total)[2] <- "AnnualFlights"
+
+carrier.delay.perc <- merge(carrier.total,carrier.delay, by = "UniqueCarrier")
+carrier.delay.perc$per.delays <- round(carrier.delay.perc$AnnualDelays/carrier.delay.perc$AnnualFlights,3)*100
+
+p<-ggplot(data=carrier.delay.perc, aes(x=UniqueCarrier, y=per.delays)) +
+  geom_bar(stat="identity", fill="steelblue")+
+   theme_light()  +
+  xlab('Flight Status') +
+  ylab('Number of Flights')
+p
+
+```
+
+<b> Observation : </b> Southwest Airlines (WN), EVA Air(EV) and Delta airlines(DL) had maximum percentage of flights delayed in 2008,while US Airways (US),Endeavor Air(9E) and Mesa Airlines (YV) had least percentage of flights delayed.
+
